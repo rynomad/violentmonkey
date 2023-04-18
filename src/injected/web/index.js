@@ -1,11 +1,11 @@
-import bridge, { addHandlers } from './bridge';
-import store from './store';
-import { makeGmApiWrapper } from './gm-api-wrapper';
-import './gm-values';
-import './notifications';
-import './requests';
-import './tabs';
-import { bindEvents } from '../util';
+import bridge, { addHandlers } from "./bridge";
+import store from "./store";
+import { makeGmApiWrapper } from "./gm-api-wrapper";
+import "./gm-values";
+import "./notifications";
+import "./requests";
+import "./tabs";
+import { bindEvents } from "../util";
 
 // Make sure to call safe::methods() in code that may run after userscripts
 
@@ -13,10 +13,14 @@ const toRun = createNullObj();
 
 export default function initialize(invokeHost) {
   if (PAGE_MODE_HANDSHAKE) {
-    window::on(PAGE_MODE_HANDSHAKE + '*', e => {
-      e = e::getDetail();
-      bindEvents(e[0], e[1], bridge);
-    }, { __proto__: null, once: true, capture: true });
+    window::on(
+      PAGE_MODE_HANDSHAKE + "*",
+      (e) => {
+        e = e::getDetail();
+        bindEvents(e[0], e[1], bridge);
+      },
+      { __proto__: null, once: true, capture: true }
+    );
     window::fire(new SafeCustomEvent(PAGE_MODE_HANDSHAKE));
     bridge.mode = PAGE;
     addHandlers({
@@ -30,10 +34,11 @@ export default function initialize(invokeHost) {
     bridge.post = (cmd, data, node) => {
       invokeHost({ cmd, data, node }, CONTENT);
     };
-    global.chrome = undefined;
-    global.browser = undefined;
+    // global.chrome = undefined;
+    // global.browser = undefined;
     return (cmd, data, realm, node) => {
-      if (process.env.DEBUG) console.info('[bridge.guest.content] received', { cmd, data, node });
+      if (process.env.DEBUG)
+        console.info("[bridge.guest.content] received", { cmd, data, node });
       bridge.onHandle({ cmd, data, node });
     };
   }
@@ -52,7 +57,7 @@ addHandlers({
     if (fn) this::fn(data);
   },
   async Plant({ data: dataKey, win: winKey }) {
-    setOwnProp(window, winKey, onCodeSet, true, 'set');
+    setOwnProp(window, winKey, onCodeSet, true, "set");
     /* Cleaning up for a script that didn't compile at all due to a syntax error.
      * Note that winKey can be intercepted via MutationEvent in this case. */
     await 0;
@@ -75,7 +80,8 @@ addHandlers({
       if (!PAGE_MODE_HANDSHAKE) {
         const winKey = key.win;
         const data = window[winKey];
-        if (data) { // executeScript ran before GetInjected response
+        if (data) {
+          // executeScript ran before GetInjected response
           safePush(toRunNow, data);
           delete window[winKey];
         } else {
@@ -87,14 +93,13 @@ addHandlers({
       }
     }
     if (!PAGE_MODE_HANDSHAKE) toRunNow::forEach(onCodeSet);
-    else if (IS_FIREFOX) bridge.post('InjectList', items[0][RUN_AT]);
+    else if (IS_FIREFOX) bridge.post("InjectList", items[0][RUN_AT]);
   },
   Expose() {
     external[VIOLENTMONKEY] = {
       version: process.env.VM_VER,
-      isInstalled: (name, namespace) => (
-        bridge.send('GetScriptVer', { meta: { name, namespace } })
-      ),
+      isInstalled: (name, namespace) =>
+        bridge.send("GetScriptVer", { meta: { name, namespace } }),
     };
   },
 });
@@ -106,11 +111,11 @@ function onCodeSet(fn) {
   // Deleting now to prevent interception via DOMNodeRemoved on el::remove()
   delete window[item.key.win];
   if (process.env.DEBUG) {
-    log('info', [bridge.mode], item.displayName);
+    log("info", [bridge.mode], item.displayName);
   }
   if (el) {
     el::remove();
   }
-  bridge.post('Run', item.id);
+  bridge.post("Run", item.id);
   wrapper::fn(gm, logging.error);
 }

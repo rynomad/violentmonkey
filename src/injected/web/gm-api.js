@@ -1,15 +1,16 @@
-import { dumpScriptValue, isEmpty } from '../util';
-import bridge from './bridge';
-import store from './store';
-import { onTabCreate } from './tabs';
-import { onRequestCreate, onRequestInitError } from './requests';
-import { onNotificationCreate } from './notifications';
-import { decodeValue, dumpValue, loadValues, changeHooks } from './gm-values';
-import { jsonDump } from './util';
+import { dumpScriptValue, isEmpty } from "../util";
+import bridge from "./bridge";
+import store from "./store";
+import { onTabCreate } from "./tabs";
+import { onRequestCreate, onRequestInitError } from "./requests";
+import { onNotificationCreate } from "./notifications";
+import { decodeValue, dumpValue, loadValues, changeHooks } from "./gm-values";
+import { jsonDump } from "./util";
+import BrokerClient, { ChatBot } from "./client";
+import CodeElementWatcher from "./codeHandles";
 
-const resolveOrReturn = (context, val) => (
-  context.async ? promiseResolve(val) : val
-);
+const resolveOrReturn = (context, val) =>
+  context.async ? promiseResolve(val) : val;
 
 export const GM_API = {
   bound: {
@@ -61,7 +62,7 @@ export const GM_API = {
       const i = objectValues(hooks)::indexOf(fn);
       let listenerId = i >= 0 && objectKeys(hooks)[i];
       if (!listenerId) {
-        listenerId = safeGetUniqId('VMvc');
+        listenerId = safeGetUniqId("VMvc");
         hooks[listenerId] = fn;
       }
       return listenerId;
@@ -74,7 +75,8 @@ export const GM_API = {
       const keyHooks = changeHooks[this.id];
       if (!keyHooks) return;
       if (process.env.DEBUG) throwIfProtoPresent(keyHooks);
-      for (const key in keyHooks) { /* proto is null */// eslint-disable-line guard-for-in
+      for (const key in keyHooks) {
+        /* proto is null */ // eslint-disable-line guard-for-in
         const hooks = keyHooks[key];
         if (listenerId in hooks) {
           delete hooks[listenerId];
@@ -97,7 +99,7 @@ export const GM_API = {
       const { id } = this;
       const key = `${id}:${cap}`;
       store.commands[key] = func;
-      bridge.post('RegisterMenu', { id, cap });
+      bridge.post("RegisterMenu", { id, cap });
       return cap;
     },
     /** @this {GMContext} */
@@ -105,7 +107,7 @@ export const GM_API = {
       const { id } = this;
       const key = `${id}:${cap}`;
       delete store.commands[key];
-      bridge.post('UnregisterMenu', { id, cap });
+      bridge.post("UnregisterMenu", { id, cap });
     },
     /**
      * @this {GMContext}
@@ -121,17 +123,22 @@ export const GM_API = {
         name = opts.name;
         onload = opts.onload;
       }
-      if (!name ? (name = 'missing') : !isString(name) && (name = 'not a string')) {
-        onRequestInitError(opts, new SafeError(`Required parameter "name" is ${name}.`));
+      if (
+        !name ? (name = "missing") : !isString(name) && (name = "not a string")
+      ) {
+        onRequestInitError(
+          opts,
+          new SafeError(`Required parameter "name" is ${name}.`)
+        );
         return;
       }
       assign(opts, {
-        [kResponseType]: 'blob',
+        [kResponseType]: "blob",
         data: null,
-        method: 'GET',
-        overrideMimeType: 'application/octet-stream',
+        method: "GET",
+        overrideMimeType: "application/octet-stream",
         // Must be present and a function to trigger downloadBlob in content bridge
-        onload: isFunction(onload) ? onload : (() => {}),
+        onload: isFunction(onload) ? onload : () => {},
       });
       return onRequestCreate(opts, this, name);
     },
@@ -160,7 +167,10 @@ export const GM_API = {
      * @returns {HTMLElement} it also has .then() so it should be compatible with TM and old VM
      */
     GM_addStyle(css) {
-      return webAddElement(null, 'style', { textContent: css, id: safeGetUniqId('VMst') });
+      return webAddElement(null, "style", {
+        textContent: css,
+        id: safeGetUniqId("VMst"),
+      });
     },
     GM_openInTab(url, options) {
       options = nullObjFrom(isObject(options) ? options : { active: !options });
@@ -168,36 +178,53 @@ export const GM_API = {
       return onTabCreate(options);
     },
     GM_notification(text, title, image, onclick) {
-      const options = isObject(text) ? text : {
-        __proto__: null,
-        text,
-        title,
-        image,
-        onclick,
-      };
+      const options = isObject(text)
+        ? text
+        : {
+            __proto__: null,
+            text,
+            title,
+            image,
+            onclick,
+          };
       if (!options.text) {
-        throw new SafeError('GM_notification: `text` is required!');
+        throw new SafeError("GM_notification: `text` is required!");
       }
       const id = onNotificationCreate(options);
       return {
-        remove: () => bridge.send('RemoveNotification', id),
+        remove: () => bridge.send("RemoveNotification", id),
       };
     },
     GM_setClipboard(data, type) {
-      bridge.post('SetClipboard', { data, type });
+      bridge.post("SetClipboard", { data, type });
     },
     // using the native console.log so the output has a clickable link to the caller's source
     GM_log: logging.log,
+    GM_communicator() {
+      return new BrokerClient();
+    },
+    GM_gpt() {
+      return {
+        bot: new ChatBot(),
+        code: new CodeElementWatcher(),
+      };
+    },
   },
 };
 
 function webAddElement(parent, tag, attrs) {
   let el;
   let errorInfo;
-  bridge.call('AddElement', { tag, attrs }, parent, function _(res) {
-    el = this;
-    errorInfo = res;
-  }, 'cbId');
+  bridge.call(
+    "AddElement",
+    { tag, attrs },
+    parent,
+    function _(res) {
+      el = this;
+      errorInfo = res;
+    },
+    "cbId"
+  );
   // DOM error in content script can't be caught by a page-mode userscript so we rethrow it here
   if (errorInfo) {
     const err = new SafeError(errorInfo[0]);
@@ -208,12 +235,15 @@ function webAddElement(parent, tag, attrs) {
      but we keep it for compatibility with GM_addStyle in VM of 2017-2019
      https://github.com/violentmonkey/violentmonkey/issues/217
      as well as for GM_addElement in Tampermonkey. */
-  return setOwnProp(el, 'then', async cb => (
-    // Preventing infinite resolve loop
-    delete el.then
-    // Native Promise ignores non-function
-    && (isFunction(cb) ? cb(el) : el)
-  ));
+  return setOwnProp(
+    el,
+    "then",
+    async (cb) =>
+      // Preventing infinite resolve loop
+      delete el.then &&
+      // Native Promise ignores non-function
+      (isFunction(cb) ? cb(el) : el)
+  );
 }
 
 /**
@@ -228,11 +258,14 @@ function getResource(context, name, isBlob, isBlobAuto) {
   const key = resources[name];
   if (key) {
     // data URIs aren't cached in bridge, so we'll send them
-    const isData = key::slice(0, 5) === 'data:';
-    const bucketKey = isBlob == null ? 0 : 1 + (isBlob = isBlobAuto ? !isData : isBlob);
-    res = isData && isBlob === false || ensureNestedProp(resCache, bucketKey, key, false);
+    const isData = key::slice(0, 5) === "data:";
+    const bucketKey =
+      isBlob == null ? 0 : 1 + (isBlob = isBlobAuto ? !isData : isBlob);
+    res =
+      (isData && isBlob === false) ||
+      ensureNestedProp(resCache, bucketKey, key, false);
     if (!res) {
-      res = bridge.call('GetResource', { id, isBlob, key, raw: isData && key });
+      res = bridge.call("GetResource", { id, isBlob, key, raw: isData && key });
       if (res !== true && isBlob) {
         // Creating Blob URL in page context to make it accessible for page userscripts
         res = createObjectURL(res);
